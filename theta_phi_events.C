@@ -1,26 +1,22 @@
-#define thetaTopo_cxx
-#include "thetaTopo.h"
+#define theta_phi_events_cxx
+#include "theta_phi_events.h"
 #include <TH2.h>
 #include <TStyle.h>
 
-void thetaTopo::Begin(TTree * /*tree*/)
+void theta_phi_events::Begin(TTree * /*tree*/)
 {
    TString option = GetOption();
 }
 
-void thetaTopo::SlaveBegin(TTree * /*tree*/)
+void theta_phi_events::SlaveBegin(TTree * /*tree*/)
 {
    TString option = GetOption();
 }
 
-// Need to be modified before process the Tree in ROOT file
-//bool fixed_phi = true;
-bool fixed_phi = false;
-
-Bool_t thetaTopo::Process(Long64_t entry)
+Bool_t theta_phi_events::Process(Long64_t entry)
 {
    fReader.SetLocalEntry(entry);
-   //std::cout << "Size is: " << CaloTopoClusters_position_x.GetSize() << std::endl;
+   //std::cout << "Size is: " << CaloClusters_position_x.GetSize() << std::endl;
    double particle_theta = atan2(sqrt(genParticles_momentum_y[0]*genParticles_momentum_y[0]+genParticles_momentum_x[0]*genParticles_momentum_x[0]), genParticles_momentum_z[0]);
    double particle_phi = atan2(genParticles_momentum_y[0], genParticles_momentum_x[0]);
    P_theta->Fill(particle_theta);
@@ -39,9 +35,9 @@ Bool_t thetaTopo::Process(Long64_t entry)
 
    for (int i=0; i<5; i++) {
      if ( fixed_phi ? (particle_theta > theta_range[i] && particle_theta < theta_range[i+1]) : (particle_phi > phi_range[i] && particle_phi < phi_range[i+1]) ) {
-       for (unsigned int j = 0; j < CaloTopoClusters_position_x.GetSize(); j ++) {
-         double cluster_theta = atan2(sqrt(CaloTopoClusters_position_y[j]*CaloTopoClusters_position_y[j]+CaloTopoClusters_position_x[j]*CaloTopoClusters_position_x[j]), CaloTopoClusters_position_z[j]);
-         double cluster_phi = atan2(CaloTopoClusters_position_y[j], CaloTopoClusters_position_x[j]);
+       for (unsigned int j = 0; j < CaloClusters_position_x.GetSize(); j ++) {
+         double cluster_theta = atan2(sqrt(CaloClusters_position_y[j]*CaloClusters_position_y[j]+CaloClusters_position_x[j]*CaloClusters_position_x[j]), CaloClusters_position_z[j]);
+         double cluster_phi = atan2(CaloClusters_position_y[j], CaloClusters_position_x[j]);
 
          if (i==0) {
            C_theta_1->Fill(cluster_theta - particle_theta);
@@ -70,14 +66,14 @@ Bool_t thetaTopo::Process(Long64_t entry)
    return kTRUE;
 }
 
-void thetaTopo::SlaveTerminate()
+void theta_phi_events::SlaveTerminate()
 {
    // The SlaveTerminate() function is called after all entries or objects
    // have been processed. When running with PROOF SlaveTerminate() is called
    // on each slave server.
 }
 
-void thetaTopo::Terminate()
+void theta_phi_events::Terminate()
 {
    //double C_theta_GetStdDev = C_theta->GetStdDev();
    //std::cout << "C_theta_GetStdDev == " << C_theta_GetStdDev << std::endl;
@@ -168,11 +164,11 @@ void thetaTopo::Terminate()
    TGraphErrors gr_resol_theta(5, &x_axis_theta[0], &resol_theta[0], &error_x_theta[0], &error_y[0]);
    TGraphErrors gr_resol_phi(5, &x_axis_phi[0], &resol_phi[0], &error_x_phi[0], &error_y[0]);
    gr_resol_theta.SetMarkerStyle(34);
-   gr_resol_theta.SetMarkerColor(kBlack);
+   gr_resol_theta.SetMarkerColor(kRed);
    gr_resol_phi.SetMarkerStyle(34);
-   gr_resol_phi.SetMarkerColor(kBlack);
+   gr_resol_phi.SetMarkerColor(kRed);
 
-   TH2D* axor1 = new TH2D("axor1", "", 1000, M_PI/180.*40., M_PI/180.*140., 1000, 0., 0.1);
+   TH2D* axor1 = new TH2D("axor1", "", 1000, M_PI/180.*40., M_PI/180.*140., 1000, 0., 2.*resol_theta[2]);
    axor1->SetDirectory(0);
    axor1->GetXaxis()->SetTitle("#theta");
    axor1->GetYaxis()->SetTitle("Resolution (#sigma)");
@@ -182,7 +178,7 @@ void thetaTopo::Terminate()
    gr_resol_theta.DrawClone("SAME P");
    c2->Print("./plot/graph_resol_theta_"+ label +".png");
 
-   TH2D* axor2 = new TH2D("axor2", "", 1000, -M_PI, M_PI, 1000, 0., 0.1);
+   TH2D* axor2 = new TH2D("axor2", "", 1000, -M_PI, M_PI, 1000, 0., 2.*resol_phi[2]);
    axor2->SetDirectory(0);
    axor2->GetXaxis()->SetTitle("#phi");
    axor2->GetYaxis()->SetTitle("Resolution (#sigma)");
@@ -190,6 +186,4 @@ void thetaTopo::Terminate()
    axor2->Draw();
    gr_resol_phi.DrawClone("SAME P");
    c2->Print("./plot/graph_resol_phi_"+ label +".png");
-
 }
-
