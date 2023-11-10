@@ -1,4 +1,4 @@
-# thetaphi_script:
+# thetaphi_script
 to produce (topo)cluster responses and resolutions plots over theta and phi
 
 "fixed_phi" need to be assigned in theta_phi_events.h before processing:
@@ -6,7 +6,7 @@ to produce (topo)cluster responses and resolutions plots over theta and phi
 bool fixed_phi = true/false;
 ```
 
-# usage
+## usage
 ```
 root -l output.root
 events->Process("theta_phi_events.C")
@@ -19,8 +19,9 @@ events->MakeSelector()
 
 "events" is the TTree name.
 
-# TChain
+## TChain
 to enlarge the statistics, there might be more than one root files.
+
 no need to "hadd" the root files if they too large. one can use "TChain":
 ```
 TChain ch("events");
