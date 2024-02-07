@@ -28,3 +28,9 @@ Then do
 ```
 root plot_roc.C
 ```
+
+## Plot variable distributions
+```
+root draw_hist.C
+```
+

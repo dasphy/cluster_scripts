@@ -193,8 +193,6 @@ public :
    float ClusterEnergyThreshold = 2.0;  // min cluster energy (in GeV)
    const int numLayers = 12;
 
-   std::vector<float> vec_E_range = { 20000., 40000., 60000., 80000. };
-
    // E_cluster, length is the number of clusters
    std::vector<float> vec_E_cluster;
 
@@ -208,6 +206,7 @@ public :
    std::vector<std::vector<float>> vec_delta_E_layer    = { {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {} };
 
    // longitudinal energy and widths profile, length is 12
+   // to plot the E, E_frac, w_theta, w_module profile in TGraph
    std::vector<float> vec_layer                 = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
    std::vector<float> mean_E_layer              = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
    std::vector<float> mean_E_layer_error        = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
@@ -293,7 +292,39 @@ public :
    float _delta_E_layer10;
    float _delta_E_layer11;
 
-// too slow !
+   // vec A is theta_cell, vec B is E_cell
+   // for a given theta, sum up the E_cell over modules
+   // then sort the theta vec, update the E vec simultaneously
+   std::pair<std::vector<float>, std::vector<float>> MergeSumAndSort(std::vector<float>& A, std::vector<float>& B) {
+     std::unordered_map<float, float> elementSum;
+     // traverse vec A, merge the same elements (theta ID) in vec A and sum up the corresponding elements (E_cell) in vec B
+     for (size_t i = 0; i < A.size(); i ++) {
+       elementSum[A[i]] += B[i];
+     }
+     std::vector<float> A_new;
+     std::vector<float> B_new;
+     // re-build vec A and vec B from elementSum
+     for (const auto& entry : elementSum) {
+       A_new.push_back(entry.first);
+       B_new.push_back(entry.second);
+     }
+     std::vector<float> vec_1(A_new.size());
+     std::vector<float> vec_2(B_new.size());
+     std::vector<size_t> indices(A_new.size());
+     for (size_t i = 0; i < indices.size(); ++ i) {
+       indices[i] = i;
+     }
+     // sort the theta vec, update the E vec simultaneously
+     std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
+       return A_new[a] < A_new[b];
+     });
+     for (size_t i = 0; i < indices.size(); ++ i) {
+       vec_1[i] = A_new[indices[i]];
+       vec_2[i] = B_new[indices[i]];
+     }
+     return std::make_pair(vec_1, vec_2);
+   }
+
 //   // get mean of a vector
 //   float get_Mean(std::vector<float> vec_data) {
 //     return std::accumulate(vec_data.begin(), vec_data.end(), 0) / vec_data.size();
