@@ -190,24 +190,24 @@ public :
    TTreeReaderArray<Float_t> PositionedCaloTopoClusterCells_position_z = {fReader, "PositionedCaloTopoClusterCells.position.z"};
 
    float E_cluster;  // in MeV
-   float ClusterEnergyThreshold = 2.0;  // min cluster energy (in GeV)
+   float ClusterEnergyThreshold = 70.0;  // min cluster energy (in GeV)
+   //float ClusterEnergyThreshold = 2.0;  // min cluster energy (in GeV)
    const int numLayers = 12;
 
    // E_cluster, length is the number of clusters
    std::vector<float> vec_E_cluster;
 
    // each has 12 sub-vectors
-   std::vector<std::vector<float>> vec_E_layer          = { {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {} };
-   std::vector<std::vector<float>> vec_E_frac_layer     = { {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {} };
-   std::vector<std::vector<float>> vec_w_theta_layer    = { {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {} };
-   std::vector<std::vector<float>> vec_w_module_layer   = { {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {} };
-   std::vector<std::vector<float>> vec_theta_diff_layer = { {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {} };
-   std::vector<std::vector<float>> vec_E_ratio_layer    = { {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {} };
-   std::vector<std::vector<float>> vec_delta_E_layer    = { {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {} };
+   std::vector<std::vector<float>> vec_E_layer        = { {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {} };
+   std::vector<std::vector<float>> vec_E_frac_layer   = { {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {} };
+   std::vector<std::vector<float>> vec_w_theta_layer  = { {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {} };
+   std::vector<std::vector<float>> vec_w_module_layer = { {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {} };
+   std::vector<std::vector<int>> vec_theta_diff_layer = { {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {} };
+   std::vector<std::vector<float>> vec_E_ratio_layer  = { {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {} };
+   std::vector<std::vector<float>> vec_delta_E_layer  = { {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {} };
 
    // longitudinal energy and widths profile, length is 12
-   // to plot the E, E_frac, w_theta, w_module profile in TGraph
-   std::vector<float> vec_layer                 = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+   // to plot E, E_frac, w_theta, w_module profile in TGraph
    std::vector<float> mean_E_layer              = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
    std::vector<float> mean_E_layer_error        = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
    std::vector<float> mean_E_frac_layer         = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
@@ -255,18 +255,18 @@ public :
    float _w_module_layer9;
    float _w_module_layer10;
    float _w_module_layer11;
-   float _theta_diff_layer0;
-   float _theta_diff_layer1;
-   float _theta_diff_layer2;
-   float _theta_diff_layer3;
-   float _theta_diff_layer4;
-   float _theta_diff_layer5;
-   float _theta_diff_layer6;
-   float _theta_diff_layer7;
-   float _theta_diff_layer8;
-   float _theta_diff_layer9;
-   float _theta_diff_layer10;
-   float _theta_diff_layer11;
+   int _theta_diff_layer0;
+   int _theta_diff_layer1;
+   int _theta_diff_layer2;
+   int _theta_diff_layer3;
+   int _theta_diff_layer4;
+   int _theta_diff_layer5;
+   int _theta_diff_layer6;
+   int _theta_diff_layer7;
+   int _theta_diff_layer8;
+   int _theta_diff_layer9;
+   int _theta_diff_layer10;
+   int _theta_diff_layer11;
    float _E_ratio_layer0;
    float _E_ratio_layer1;
    float _E_ratio_layer2;
@@ -295,20 +295,20 @@ public :
    // vec A is theta_cell, vec B is E_cell
    // for a given theta, sum up the E_cell over modules
    // then sort the theta vec, update the E vec simultaneously
-   std::pair<std::vector<float>, std::vector<float>> MergeSumAndSort(std::vector<float>& A, std::vector<float>& B) {
-     std::unordered_map<float, float> elementSum;
+   std::pair<std::vector<int>, std::vector<float>> MergeSumAndSort(std::vector<int>& A, std::vector<float>& B) {
+     std::unordered_map<int, float> elementSum;
      // traverse vec A, merge the same elements (theta ID) in vec A and sum up the corresponding elements (E_cell) in vec B
      for (size_t i = 0; i < A.size(); i ++) {
        elementSum[A[i]] += B[i];
      }
-     std::vector<float> A_new;
+     std::vector<int> A_new;
      std::vector<float> B_new;
      // re-build vec A and vec B from elementSum
      for (const auto& entry : elementSum) {
        A_new.push_back(entry.first);
        B_new.push_back(entry.second);
      }
-     std::vector<float> vec_1(A_new.size());
+     std::vector<int> vec_1(A_new.size());
      std::vector<float> vec_2(B_new.size());
      std::vector<size_t> indices(A_new.size());
      for (size_t i = 0; i < indices.size(); ++ i) {
@@ -325,6 +325,7 @@ public :
      return std::make_pair(vec_1, vec_2);
    }
 
+//   // too slow !
 //   // get mean of a vector
 //   float get_Mean(std::vector<float> vec_data) {
 //     return std::accumulate(vec_data.begin(), vec_data.end(), 0) / vec_data.size();
@@ -378,6 +379,12 @@ public :
 };
 
 #endif
+
+// draw E-theta TGraph
+int count_cluster = 0;
+std::vector<std::vector<int>> theta_bin_clu(100, {0});
+std::vector<std::vector<float>> E_theta_bin_clu(100, {0});
+
 #ifdef events_cxx
 void events::Init(TTree *tree)
 {

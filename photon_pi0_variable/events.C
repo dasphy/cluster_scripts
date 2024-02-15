@@ -17,6 +17,10 @@ void events::SlaveBegin(TTree * /*tree*/)
 
 Bool_t events::Process(Long64_t entry)
 {
+   //static int count_entry = 0;
+   //if (count_entry >= 10000) {
+   //  return kFALSE;
+   //}
    fReader.SetLocalEntry(entry);
 
    if (entry % 2000 == 0) {
@@ -25,23 +29,22 @@ Bool_t events::Process(Long64_t entry)
 
    // loop over clusters
    for (unsigned int nCluster = 0; nCluster < CorrectedCaloTopoClusters_energy.GetSize(); nCluster ++) {
-     E_cluster = 1000*CorrectedCaloTopoClusters_energy[nCluster];  // switch E to MeV
-     if (E_cluster < 1000*ClusterEnergyThreshold)  continue;  // ClusterEnergyThreshold is in GeV
+     E_cluster = 1000 * CorrectedCaloTopoClusters_energy[nCluster];  // convert to MeV
+     if (E_cluster < 1000 * ClusterEnergyThreshold)  continue;  // ClusterEnergyThreshold in GeV
+     //if (E_cluster < 60000 || E_cluster > 80000)    continue;
 
      vec_E_cluster.push_back(E_cluster);
-
-     // initialize them for a new cluster
+     // initialize for a new cluster
      std::vector<float> E_layer(12, 0.0);
      // for calculation of width in theta/module
      std::vector<float> theta2_E_layer(12, 0.0);
      std::vector<float> theta_E_layer(12, 0.0);
      std::vector<float> module2_E_layer(12, 0.0);
      std::vector<float> module_E_layer(12, 0.0);
-
      // E, theta and module ID of cells in each layer
      std::vector<std::vector<float>> vec_E_cell_layer(12, std::vector<float>());
-     std::vector<std::vector<float>> vec_theta_cell_layer(12, std::vector<float>());
-     std::vector<std::vector<float>> vec_module_cell_layer(12, std::vector<float>());
+     std::vector<std::vector<int>> vec_theta_cell_layer(12, std::vector<int>());
+     std::vector<std::vector<int>> vec_module_cell_layer(12, std::vector<int>());
 
      // loop over all positioned cells
      for (unsigned int nCell = 0; nCell < PositionedCaloTopoClusterCells_position_x.GetSize(); nCell ++) {
@@ -57,7 +60,7 @@ Bool_t events::Process(Long64_t entry)
      // for a given theta, sum up the E_cell over modules
      // then sort the theta vec, update the E vec simultaneously
      // theta_E_pair: first one is theta, second one is E
-     std::vector<std::pair<std::vector<float>, std::vector<float>>> theta_E_pair;
+     std::vector<std::pair<std::vector<int>, std::vector<float>>> theta_E_pair;
      for (unsigned int layer = 0; layer < numLayers; layer ++) {
        // in case there's no cell in this layer (sometimes in layer 0)
        if (vec_E_cell_layer[layer].empty()) {
@@ -69,36 +72,29 @@ Bool_t events::Process(Long64_t entry)
        theta_E_pair.push_back(result);
      }
 
-     // only one E min value per layer
-     std::vector<float> E_cell_Min(12, std::numeric_limits<float>::max());
      // local maxima (could be more than one) and the corresponding theta
      std::vector<std::vector<float>> local_E_Max(12, std::vector<float>());
      std::vector<std::vector<float>> local_E_Max_theta(12, std::vector<float>());
-
      // loop over layers
      for (unsigned int layer = 0; layer < numLayers; layer ++) {
        // loop over theta IDs
        for (int i = 0; i < theta_E_pair[layer].second.size(); i ++) {
-         // find the E min
-         if (theta_E_pair[layer].second[i] < E_cell_Min[layer]) {
-           E_cell_Min[layer] = theta_E_pair[layer].second[i];
-         }
          // find the local E maxima
          if (i != 0 && i != (theta_E_pair[layer].second.size()-1)) {
-           if (theta_E_pair[layer].second[i] > theta_E_pair[layer].second[i-1] && theta_E_pair[layer].second[i] > theta_E_pair[layer].second[i+1]) {
+           if (theta_E_pair[layer].second[i] > theta_E_pair[layer].second[i-1]
+                && theta_E_pair[layer].second[i] > theta_E_pair[layer].second[i+1]) {
              local_E_Max[layer].push_back(theta_E_pair[layer].second[i]);
              local_E_Max_theta[layer].push_back(theta_E_pair[layer].first[i]);
            }
          }
        }  // end of loop over theta IDs
-       if (E_cell_Min[layer] > 1e12)  E_cell_Min[layer] = 0.;  // check E_cell_Min
      }  // end of loop over layers
 
      std::vector<float> E_cell_Max(12, 0.);
      std::vector<float> E_cell_secMax(12, 0.);
      std::vector<float> E_cell_Max_theta(12, 0.);
      std::vector<float> E_cell_secMax_theta(12, 0.);
-
+     std::vector<float> E_cell_Min(12, std::numeric_limits<float>::max());
      // loop over layers
      for (unsigned int layer = 0; layer < numLayers; layer ++) {
        if (local_E_Max[layer].empty()) {
@@ -106,11 +102,13 @@ Bool_t events::Process(Long64_t entry)
          E_cell_secMax[layer] = 0.;
          E_cell_Max_theta[layer] = 0.;
          E_cell_secMax_theta[layer] = 0.;
+         E_cell_Min[layer] = 0.;
        } else if (local_E_Max[layer].size() < 2) {
          E_cell_Max[layer] = local_E_Max[layer][0];
          E_cell_secMax[layer] = 0.;
          E_cell_Max_theta[layer] = local_E_Max_theta[layer][0];
          E_cell_secMax_theta[layer] = local_E_Max_theta[layer][0];
+         E_cell_Min[layer] = 0.;
        } else {
          std::vector<float> sortedVec = local_E_Max[layer];
          // move the top 2 max to the beginning
@@ -124,12 +122,22 @@ Bool_t events::Process(Long64_t entry)
          int index_secMax = std::distance(local_E_Max[layer].begin(), it_secMax);
          E_cell_Max_theta[layer]    = local_E_Max_theta[layer][index_Max];
          E_cell_secMax_theta[layer] = local_E_Max_theta[layer][index_secMax];
+         // find the E_min in the theta range of E_cell_Max and E_cell_secMax
+         for (int i = 0; i < theta_E_pair[layer].first.size(); i ++ ) {
+           if (theta_E_pair[layer].first[i] > std::min(E_cell_Max_theta[layer], E_cell_secMax_theta[layer])
+                && theta_E_pair[layer].first[i] < std::max(E_cell_Max_theta[layer], E_cell_secMax_theta[layer])) {
+             if (theta_E_pair[layer].second[i] < E_cell_Min[layer]) {
+               E_cell_Min[layer] = theta_E_pair[layer].second[i];
+             }
+           }
+         }
        }
+       if (E_cell_Min[layer] > 1e12)  E_cell_Min[layer] = 0.;  // check E_cell_Min
      }  // end of loop over layers
 
      // module IDs are from 0 to 1535
-     std::vector<float> module_cell_Max(12, -1);
-     std::vector<float> module_cell_Min(12, 1536);
+     std::vector<int> module_cell_Max(12, -1);
+     std::vector<int> module_cell_Min(12, 1536);
      // loop over 12 layers
      for (unsigned int layer = 0; layer < numLayers; layer ++) {
        // loop over cells
@@ -145,7 +153,7 @@ Bool_t events::Process(Long64_t entry)
        // reset module ID due to module periodicity
        if ((module_cell_Max[layer] - module_cell_Min[layer]) > 1500) {
          for (unsigned int i = 0; i < vec_module_cell_layer[layer].size(); i ++) {
-           if (vec_module_cell_layer[layer][i] > 1536/2.)    vec_module_cell_layer[layer][i] = vec_module_cell_layer[layer][i] - 1536;
+           if (vec_module_cell_layer[layer][i] > 1536/2)    vec_module_cell_layer[layer][i] = vec_module_cell_layer[layer][i] - 1536;
          }
          std::cout << "------ Reset module ID in layer : " << layer << std::endl;
        }
@@ -158,10 +166,6 @@ Bool_t events::Process(Long64_t entry)
          module2_E_layer[layer] = module2_E_layer[layer] + vec_module_cell_layer[layer][i] * vec_module_cell_layer[layer][i] * vec_E_cell_layer[layer][i];
          module_E_layer[layer]  = module_E_layer[layer]  + vec_module_cell_layer[layer][i] * vec_E_cell_layer[layer][i];
        }
-
-       //auto minElement = std::min_element(vec_theta_cell_layer[layer].begin(), vec_theta_cell_layer[layer].end());
-       //auto maxElement = std::max_element(vec_theta_cell_layer[layer].begin(), vec_theta_cell_layer[layer].end());
-       //std::cout << "Max theta diff in layer " << layer << " is : " << (*maxElement-*minElement) << std::endl;
 
        vec_E_layer[layer].push_back(E_layer[layer]);
        vec_E_frac_layer[layer].push_back(E_layer[layer] / E_cluster);
@@ -176,7 +180,7 @@ Bool_t events::Process(Long64_t entry)
        if (width_module > 20)    width_module = 20;
        vec_w_module_layer[layer].push_back(width_module);
 
-       float theta_diff = fabs(E_cell_Max_theta[layer] - E_cell_secMax_theta[layer]);
+       int theta_diff = fabs(E_cell_Max_theta[layer] - E_cell_secMax_theta[layer]);
        if (theta_diff > 40)    theta_diff = 40;
        vec_theta_diff_layer[layer].push_back(theta_diff);
 
@@ -189,12 +193,18 @@ Bool_t events::Process(Long64_t entry)
        vec_E_cell_layer[layer].clear();
        vec_theta_cell_layer[layer].clear();
        vec_module_cell_layer[layer].clear();
-
      }  // end of loop over 12 layers
-     //std::cout << "==========================================" << std::endl;
 
+     // E vs theta ID in strip layer
+     theta_bin_clu[count_cluster] = theta_E_pair[1].first;
+     E_theta_bin_clu[count_cluster] =  theta_E_pair[1].second;
+     //theta_bin_clu[count_cluster].insert(theta_bin_clu[count_cluster].end(), theta_E_pair[5].first.begin(), theta_E_pair[5].first.end());
+     //E_theta_bin_clu[count_cluster].insert(E_theta_bin_clu[count_cluster].end(), theta_E_pair[5].second.begin(), theta_E_pair[5].second.end());
+     std::cout << "count_cluster is : " << count_cluster << std::endl;
+     count_cluster ++;
+     std::cout << "==========================================" << std::endl;
    }  // end of loop over clusters
-
+   //count_entry ++;
    return kTRUE;
 }
 
@@ -204,7 +214,7 @@ void events::SlaveTerminate()
 
 void events::Terminate()
 {
-   TFile* fOut = new TFile("photon_pi0_variable.root", "RECREATE");
+   TFile* fOut = new TFile("gamma_pi0_variable.root", "RECREATE");
    TTree *myTree = new TTree("variable", "variables for MVA");
 
    myTree->Branch("E_cluster",        &_E_cluster,        "_E_cluster/F");
@@ -244,18 +254,18 @@ void events::Terminate()
    myTree->Branch("w_module_layer9",  &_w_module_layer9,  "_w_module_layer9/F");
    myTree->Branch("w_module_layer10", &_w_module_layer10, "_w_module_layer10/F");
    myTree->Branch("w_module_layer11", &_w_module_layer11, "_w_module_layer11/F");
-   myTree->Branch("theta_diff_layer0",   &_theta_diff_layer0,   "_theta_diff_layer0/F");
-   myTree->Branch("theta_diff_layer1",   &_theta_diff_layer1,   "_theta_diff_layer1/F");
-   myTree->Branch("theta_diff_layer2",   &_theta_diff_layer2,   "_theta_diff_layer2/F");
-   myTree->Branch("theta_diff_layer3",   &_theta_diff_layer3,   "_theta_diff_layer3/F");
-   myTree->Branch("theta_diff_layer4",   &_theta_diff_layer4,   "_theta_diff_layer4/F");
-   myTree->Branch("theta_diff_layer5",   &_theta_diff_layer5,   "_theta_diff_layer5/F");
-   myTree->Branch("theta_diff_layer6",   &_theta_diff_layer6,   "_theta_diff_layer6/F");
-   myTree->Branch("theta_diff_layer7",   &_theta_diff_layer7,   "_theta_diff_layer7/F");
-   myTree->Branch("theta_diff_layer8",   &_theta_diff_layer8,   "_theta_diff_layer8/F");
-   myTree->Branch("theta_diff_layer9",   &_theta_diff_layer9,   "_theta_diff_layer9/F");
-   myTree->Branch("theta_diff_layer10",  &_theta_diff_layer10,  "_theta_diff_layer10/F");
-   myTree->Branch("theta_diff_layer11",  &_theta_diff_layer11,  "_theta_diff_layer11/F");
+   myTree->Branch("theta_diff_layer0",   &_theta_diff_layer0,   "_theta_diff_layer0/I");
+   myTree->Branch("theta_diff_layer1",   &_theta_diff_layer1,   "_theta_diff_layer1/I");
+   myTree->Branch("theta_diff_layer2",   &_theta_diff_layer2,   "_theta_diff_layer2/I");
+   myTree->Branch("theta_diff_layer3",   &_theta_diff_layer3,   "_theta_diff_layer3/I");
+   myTree->Branch("theta_diff_layer4",   &_theta_diff_layer4,   "_theta_diff_layer4/I");
+   myTree->Branch("theta_diff_layer5",   &_theta_diff_layer5,   "_theta_diff_layer5/I");
+   myTree->Branch("theta_diff_layer6",   &_theta_diff_layer6,   "_theta_diff_layer6/I");
+   myTree->Branch("theta_diff_layer7",   &_theta_diff_layer7,   "_theta_diff_layer7/I");
+   myTree->Branch("theta_diff_layer8",   &_theta_diff_layer8,   "_theta_diff_layer8/I");
+   myTree->Branch("theta_diff_layer9",   &_theta_diff_layer9,   "_theta_diff_layer9/I");
+   myTree->Branch("theta_diff_layer10",  &_theta_diff_layer10,  "_theta_diff_layer10/I");
+   myTree->Branch("theta_diff_layer11",  &_theta_diff_layer11,  "_theta_diff_layer11/I");
    myTree->Branch("E_ratio_layer0",      &_E_ratio_layer0,      "_E_ratio_layer0/F");
    myTree->Branch("E_ratio_layer1",      &_E_ratio_layer1,      "_E_ratio_layer1/F");
    myTree->Branch("E_ratio_layer2",      &_E_ratio_layer2,      "_E_ratio_layer2/F");
@@ -362,13 +372,14 @@ void events::Terminate()
 
    myTree->Write();
 
+   std::vector<float> vec_layer(12);
    // loop over layers
    for (unsigned int layer = 0; layer < numLayers; layer ++) {
      //std::cout << "size of vec_E_layer in layer " << layer << " is : " << vec_E_layer[layer].size() << std::endl;
      //std::cout << "size of vec_E_frac_layer in layer " << layer << " is : " << vec_E_frac_layer[layer].size() << std::endl;
      //std::cout << "size of vec_w_theta_layer in layer " << layer << " is : " << vec_w_theta_layer[layer].size() << std::endl;
      //std::cout << "size of vec_w_module_layer in layer " << layer << " is : " << vec_w_module_layer[layer].size() << std::endl;
-
+     // set to float in TGraph
      vec_layer[layer] = layer * 1.0;
 
      // E profile
@@ -425,16 +436,16 @@ void events::Terminate()
      }
      mean_w_module_layer_error[layer] = std::sqrt(vec_w_module_layer_sumSquaredDifferences / vec_w_module_layer[layer].size());
 
-     std::cout << "mean_E_layer in layer_" << layer << " is : " << mean_E_layer[layer] << std::endl;
-     std::cout << "mean_E_layer_error in layer_" << layer << " is : " << mean_E_layer_error[layer] << std::endl;
-     std::cout << "mean_E_frac_layer in layer_" << layer << " is : " << mean_E_frac_layer[layer] << std::endl;
-     std::cout << "mean_E_frac_layer_error in layer_" << layer << " is : " << mean_E_frac_layer_error[layer] << std::endl;
-     std::cout << "mean_w_theta_layer in layer_" << layer << " is : " << mean_w_theta_layer[layer] << std::endl;
-     std::cout << "mean_w_theta_layer_error in layer_" << layer << " is : " << mean_w_theta_layer_error[layer] << std::endl;
-     std::cout << "mean_w_module_layer in layer_" << layer << " is : " << mean_w_module_layer[layer] << std::endl;
-     std::cout << "mean_w_module_layer_error in layer_" << layer << " is : " << mean_w_module_layer_error[layer] << std::endl;
+     std::cout << "mean_E_layer         in layer_" << layer << " is : " << mean_E_layer[layer] << std::endl;
+     std::cout << "error_E_layer        in layer_" << layer << " is : " << mean_E_layer_error[layer] << std::endl;
+     std::cout << "mean_E_frac_layer    in layer_" << layer << " is : " << mean_E_frac_layer[layer] << std::endl;
+     std::cout << "error_E_frac_layer   in layer_" << layer << " is : " << mean_E_frac_layer_error[layer] << std::endl;
+     std::cout << "mean_w_theta_layer   in layer_" << layer << " is : " << mean_w_theta_layer[layer] << std::endl;
+     std::cout << "error_w_theta_layer  in layer_" << layer << " is : " << mean_w_theta_layer_error[layer] << std::endl;
+     std::cout << "mean_w_module_layer  in layer_" << layer << " is : " << mean_w_module_layer[layer] << std::endl;
+     std::cout << "error_w_module_layer in layer_" << layer << " is : " << mean_w_module_layer_error[layer] << std::endl;
      std::cout << "===========================" << std::endl;
-   }
+   }  // end of loop over layers
 
    float max_mean_E_layer        = std::numeric_limits<float>::min();
    float max_mean_E_frac_layer   = std::numeric_limits<float>::min();
@@ -467,7 +478,7 @@ void events::Terminate()
    axor1->SetStats(0);
    axor1->Draw();
    gr1.DrawClone("SAME P");
-   c1->Print("./c1.png");
+   c1->Print("./E_profile.pdf");
 
    TCanvas* c4 = new TCanvas("canvas4", "canvas4", 1000, 600);
    c4->SetLeftMargin(0.13);
@@ -483,7 +494,7 @@ void events::Terminate()
    axor4->SetStats(0);
    axor4->Draw();
    gr4.DrawClone("SAME P");
-   c4->Print("./c4.png");
+   c4->Print("./E_frac_profile.pdf");
 
    TCanvas* c2 = new TCanvas("canvas2", "canvas2", 1000, 600);
    c2->SetLeftMargin(0.13);
@@ -499,7 +510,7 @@ void events::Terminate()
    axor2->SetStats(0);
    axor2->Draw();
    gr2.DrawClone("SAME P");
-   c2->Print("./c2.png");
+   c2->Print("./theta_width_profile.pdf");
 
    TCanvas* c3 = new TCanvas("canvas3", "canvas3", 1000, 600);
    c3->SetLeftMargin(0.13);
@@ -515,7 +526,39 @@ void events::Terminate()
    axor3->SetStats(0);
    axor3->Draw();
    gr3.DrawClone("SAME P");
-   c3->Print("./c3.png");
+   c3->Print("./module_width_profile.pdf");
+
+   // draw E vs theta ID in strip layer for a single cluster
+   // here generate 100 plots for 100 clusters
+   for (int i = 0; i < 100; i ++) {
+     TCanvas* c5 = new TCanvas("canvas5", "canvas5", 1000, 600);
+     c5->SetLogy();
+     c5->SetLeftMargin(0.13);
+     c5->SetRightMargin(0.06);
+     TGraph *gr5 = new TGraph();
+     for (int j = 0; j < theta_bin_clu[i].size(); j ++) {
+       gr5->SetPoint(j, theta_bin_clu[i][j], E_theta_bin_clu[i][j]);
+     }
+     //auto theta_E_clu_pair = MergeSumAndSort(theta_bin_clu[i], E_theta_bin_clu[i]);
+     //TGraph *gr5 = new TGraph();
+     //for (int j = 0; j < theta_E_clu_pair.first.size(); j ++) {
+     //  gr5->SetPoint(j, theta_E_clu_pair.first[j], theta_E_clu_pair.second[j]);
+     //}
+     gr5->SetMarkerStyle(8);
+     gr5->SetMarkerColor(kBlue);
+     gr5->SetLineWidth(2);
+     gr5->SetTitle("Leading topocluster of 100 GeV pi0");
+     //gr5->SetTitle("Leading topocluster of 100 GeV photon");
+     gr5->GetXaxis()->SetRangeUser(350, 450);
+     gr5->GetXaxis()->SetTitle("Theta ID");
+     gr5->GetYaxis()->SetTitle("Energy in strip layer [MeV]");
+     gr5->Draw();
+     c5->Print(Form("./fig_pi0_100_GeV_%03d.pdf", i));
+     //c5->Print(Form("./fig_photon_100_GeV_%03d.pdf", i+1));
+     delete c5;
+     delete gr5;
+     //gr5->Write("E_vs_theta_strip");
+   }
 
    gr1.Write("E_profile");
    gr4.Write("E_frac_profile");
@@ -523,5 +566,4 @@ void events::Terminate()
    gr3.Write("width_module_profile");
 
    fOut->Close();
-
 }
